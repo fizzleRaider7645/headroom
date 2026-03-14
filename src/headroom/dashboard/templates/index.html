@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .budget-section {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+  }
+  .message-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
+  }
+  .input-area {
+    padding: 12px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  .input-area form {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    width: 100%;
+  }
+  .input-area textarea {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 14px;
+    padding: 10px 12px;
+    resize: none;
+    line-height: 1.5;
+    font-family: inherit;
+    min-height: 44px;
+    max-height: 160px;
+  }
+  .input-area textarea:focus {
+    outline: none;
+    border-color: var(--blue);
+  }
+  /* Disabled state for submit button during request */
+  .input-area button[type="submit"]:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .strategy-card {
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: var(--surface2);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .status-ok    { color: var(--green); }
+  .status-warn  { color: var(--amber); }
+  .status-act   { color: var(--red); }
+  .status-overflow { color: var(--red); }
+  /* Loading spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-ring {
+    width: 22px;
+    height: 22px;
+    border: 2.5px solid var(--surface2);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  #response-spinner {
+    display: none;
+    padding: 10px 16px;
+    align-items: center;
+  }
+  #response-spinner.htmx-request {
+    display: flex;
+  }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="layout">
+
+  <!-- Budget Bar + optional warning (full width) -->
+  <div class="budget-section">
+    <div id="budget-bar"
+         hx-get="/partials/budget_bar"
+         hx-trigger="every 2s"
+         hx-swap="innerHTML">
+      {% include "partials/budget_bar.html" %}
+    </div>
+    {% if api_key_warning %}
+    <div style="
+      margin-top: 10px;
+      background: #7c2d12;
+      border: 1px solid #9a3412;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #fed7aa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    ">
+      <span style="font-weight:700;">&#9888; No API key —</span>
+      {{ api_key_warning }}
+      <code style="background:#9a3412; padding:2px 6px; border-radius:4px; margin-left:4px; white-space:nowrap;">
+        export ANTHROPIC_API_KEY=sk-ant-...
+      </code>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Chat panel -->
+  <div class="chat-section">
+    <div class="message-list" id="message-list">
+      {% include "partials/message_list.html" %}
+    </div>
+
+    <!-- Green spinner: visible only while request is in flight -->
+    <div id="response-spinner">
+      <div class="spinner-ring"></div>
+    </div>
+
+    <div class="input-area">
+      <form
+        hx-post="/partials/send"
+        hx-target="#message-list"
+        hx-swap="innerHTML"
+        hx-indicator="#response-spinner"
+        hx-disabled-elt="find button[type='submit']"
+        hx-on::after-request="this.reset();"
+      >
+        <textarea
+          name="message"
+          placeholder="Type a message..."
+          rows="2"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.requestSubmit();}"
+        ></textarea>
+        <button type="submit" class="primary" style="align-self:stretch; white-space:nowrap; flex-shrink:0;">
+          Send
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="section-title">Strategies</div>
+    <div id="strategy-panel">
+      {% include "partials/strategy_panel.html" %}
+    </div>
+
+    <div class="section-title" style="margin-top:24px;">Actions</div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <a href="/api/session/export" download>
+        <button class="secondary" style="width:100%;">Export Session</button>
+      </a>
+      <button class="secondary" style="width:100%;" onclick="document.getElementById('message-list').innerHTML=''">Clear Chat</button>
+    </div>
+
+    {% if status.status is defined %}
+    <div class="section-title" style="margin-top:24px;">Status</div>
+    <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); line-height:2;">
+      <div>Status: <span class="status-{{ status.status }}">{{ status.status }}</span></div>
+      <div>Turns: {{ status.turns }}</div>
+      <div>Cache hits: {{ status.cache_hits }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  const msgList = document.getElementById('message-list');
+
+  // On page load scroll to bottom to show latest messages
+  msgList.scrollTop = msgList.scrollHeight;
+
+  // After each send (innerHTML replace), scroll to top so user message is visible first
+  document.body.addEventListener('htmx:afterSettle', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'message-list') {
+      msgList.scrollTop = 0;
+    }
+  });
+</script>
+{% endblock %}
