@@ -159,7 +159,13 @@
       <a href="/api/session/export" download>
         <button class="secondary" style="width:100%;">Export Session</button>
       </a>
-      <button class="secondary" style="width:100%;" onclick="document.getElementById('message-list').innerHTML=''">Clear Chat</button>
+      <button
+        class="secondary"
+        style="width:100%;"
+        hx-post="/partials/clear"
+        hx-target="#message-list"
+        hx-swap="innerHTML"
+      >Clear Chat</button>
     </div>
 
     {% if status.status is defined %}

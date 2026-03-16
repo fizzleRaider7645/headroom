@@ -23,6 +23,7 @@ def setup_state(mock_client):
     yield
     state.session = None
     state.event_log.clear()
+    state.strategy_enabled.clear()
 
 
 @pytest.fixture
@@ -64,3 +65,46 @@ def test_strategy_toggle(client):
     assert response.status_code == 200
     data = response.json()
     assert "enabled" in data
+
+
+def test_strategy_toggle_actually_disables_strategy(client):
+    """Toggling a strategy must set strategy.enabled=False on the live instance."""
+    state = get_state()
+
+    # Confirm enabled by default
+    strat = next(
+        s for s in state.session._strategies if s.name == "SummarizationStrategy"
+    )
+    assert strat.enabled is True
+
+    # Toggle off
+    client.post("/api/strategy/SummarizationStrategy/toggle")
+    assert strat.enabled is False
+
+    # Toggle back on
+    client.post("/api/strategy/SummarizationStrategy/toggle")
+    assert strat.enabled is True
+
+
+def test_strategy_toggle_htmx_partial(client):
+    """HTMX toggle endpoint returns HTML card with correct enabled state."""
+    response = client.post("/partials/strategy/SummarizationStrategy/toggle")
+    assert response.status_code == 200
+    # After one toggle it should be disabled — card should reflect that
+    assert "OFF" in response.text or "disabled" in response.text.lower() or "false" in response.text.lower()
+
+
+def test_clear_chat_wipes_session(client):
+    """POST /partials/clear must clear session history and return empty HTML."""
+    state = get_state()
+    # Seed a message directly so we don't need a real API call
+    from headroom.core.message import TrackedMessage
+    state.session._messages.append(TrackedMessage(role="user", content="seed"))
+    assert len(state.session.history) == 1
+
+    response = client.post("/partials/clear")
+
+    assert response.status_code == 200
+    assert response.text == ""           # empty HTML → message list goes blank
+    assert len(state.session.history) == 0
+    assert state.session.token_usage.turns == 0

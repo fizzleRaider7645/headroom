@@ -63,6 +63,7 @@ async def index(request: Request):
                 "name": s.name,
                 "priority": s.priority,
                 "enabled": state.strategy_enabled.get(s.name, True),
+                "params": s.params,
             }
             for s in sorted(session._strategies, key=lambda x: x.priority)
         ]
@@ -111,6 +112,22 @@ async def message_list_partial(request: Request):
     return templates.TemplateResponse(request, "partials/message_list.html", {"request": request, "messages": messages})
 
 
+def _strategy_dict(name: str) -> dict | None:
+    """Build the template context dict for a single strategy card."""
+    state = get_state()
+    if not state.session:
+        return None
+    for s in state.session._strategies:
+        if s.name == name:
+            return {
+                "name": s.name,
+                "priority": s.priority,
+                "enabled": s.enabled,
+                "params": s.params,
+            }
+    return None
+
+
 @router.post("/partials/strategy/{name}/toggle", response_class=HTMLResponse)
 async def toggle_strategy_partial(request: Request, name: str):
     """HTMX: toggle a strategy and return the updated card HTML."""
@@ -120,19 +137,49 @@ async def toggle_strategy_partial(request: Request, name: str):
 
     current = state.strategy_enabled.get(name, True)
     state.strategy_enabled[name] = not current
-    enabled = not current
 
-    priority = 0
     for s in state.session._strategies:
         if s.name == name:
-            s._disabled = not enabled
-            priority = s.priority
+            s.enabled = not current
             break
 
-    strategy = {"name": name, "priority": priority, "enabled": enabled}
+    strategy = _strategy_dict(name)
     return templates.TemplateResponse(
         request, "partials/strategy_card.html", {"request": request, "strategy": strategy}
     )
+
+
+@router.post("/partials/strategy/{name}/param/{param_name}", response_class=HTMLResponse)
+async def update_strategy_param(
+    request: Request, name: str, param_name: str, value: str = Form(...)
+):
+    """HTMX: update a single strategy parameter and return the refreshed card."""
+    state = get_state()
+    if not state.session:
+        return HTMLResponse('<div class="strategy-card error">No session</div>')
+
+    for s in state.session._strategies:
+        if s.name == name:
+            try:
+                s.set_param(param_name, value)
+            except (ValueError, KeyError) as exc:
+                return HTMLResponse(f'<div class="strategy-card error">{exc}</div>')
+            break
+
+    strategy = _strategy_dict(name)
+    return templates.TemplateResponse(
+        request, "partials/strategy_card.html", {"request": request, "strategy": strategy}
+    )
+
+
+@router.post("/partials/clear", response_class=HTMLResponse)
+async def clear_chat(request: Request):
+    """HTMX: clear session history and return an empty message list."""
+    state = get_state()
+    if state.session:
+        state.session.clear()
+        state.log_event("clear")
+    return HTMLResponse("")
 
 
 @router.post("/partials/send", response_class=HTMLResponse)

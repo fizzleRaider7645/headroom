@@ -16,4 +16,30 @@
   <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
     priority: {{ strategy['priority'] }}
   </div>
+
+  {% if strategy['params'] %}
+  <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
+    {% for param in strategy['params'] %}
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px;">
+      <label style="font-size:11px; color:var(--text-muted); flex:1; white-space:nowrap;">
+        {{ param['label'] }}
+      </label>
+      <input
+        type="number"
+        name="value"
+        value="{{ param['value'] }}"
+        min="{{ param['min'] }}"
+        max="{{ param['max'] }}"
+        step="{{ param.get('step', 1) }}"
+        style="width:72px; background:var(--surface); border:1px solid var(--border); border-radius:4px; color:var(--text); font-family:var(--mono); font-size:11px; padding:3px 6px; text-align:right;"
+        hx-post="/partials/strategy/{{ strategy['name'] }}/param/{{ param['name'] }}"
+        hx-trigger="change"
+        hx-target="closest .strategy-card"
+        hx-swap="outerHTML"
+        hx-include="this"
+      >
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>

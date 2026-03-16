@@ -24,7 +24,20 @@ class BudgetGuardStrategy(BaseStrategy):
         self.drop_batch_size = drop_batch_size
 
     def should_apply(self, budget: TokenBudget, used_tokens: int) -> bool:
-        return budget.status(used_tokens) == "overflow"
+        return self.enabled and budget.status(used_tokens) == "overflow"
+
+    @property
+    def params(self) -> list[dict]:
+        return [
+            {
+                "name": "drop_batch_size",
+                "label": "Drop batch size",
+                "type": "int",
+                "value": self.drop_batch_size,
+                "min": 1,
+                "max": 10,
+            },
+        ]
 
     def apply(
         self,

@@ -38,7 +38,28 @@ class CacheInjectionStrategy(BaseStrategy):
         self.min_cache_tokens = min_cache_tokens
 
     def should_apply(self, budget: "TokenBudget", used_tokens: int) -> bool:
-        return True  # always runs
+        return self.enabled  # always runs unless explicitly disabled
+
+    @property
+    def params(self) -> list[dict]:
+        return [
+            {
+                "name": "max_breakpoints",
+                "label": "Max breakpoints",
+                "type": "int",
+                "value": self.max_breakpoints,
+                "min": 1,
+                "max": MAX_BREAKPOINTS,
+            },
+            {
+                "name": "min_cache_tokens",
+                "label": "Min cache tokens",
+                "type": "int",
+                "value": self.min_cache_tokens,
+                "min": 256,
+                "max": 4096,
+            },
+        ]
 
     def apply(
         self,

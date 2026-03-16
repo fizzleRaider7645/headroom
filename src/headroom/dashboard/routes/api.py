@@ -89,10 +89,10 @@ async def toggle_strategy(name: str):
     current = state.strategy_enabled.get(name, True)
     state.strategy_enabled[name] = not current
 
-    # Enable/disable in session
+    # Enable/disable the strategy instance directly
     for strategy in state.session._strategies:
         if strategy.name.lower() == name.lower():
-            strategy._disabled = not current
+            strategy.enabled = not current
             break
 
     return {"name": name, "enabled": not current}

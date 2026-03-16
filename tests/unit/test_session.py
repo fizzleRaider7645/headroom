@@ -80,6 +80,60 @@ async def test_export_and_load(session, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_disabled_strategy_is_skipped(session, mock_client):
+    """A strategy with enabled=False must not run, even when budget conditions are met."""
+    session.budget = TokenBudget(limit=100, warn_at=0.1, act_at=0.2, reserve=0)
+    mock_client.messages.count_tokens.return_value.input_tokens = 99
+
+    # Seed two messages so BudgetGuard has something to drop
+    await session.send("First")
+    await session.send("Second")
+    assert len(session.history) == 4  # 2 user + 2 assistant
+
+    # Disable BudgetGuardStrategy
+    for s in session._strategies:
+        if s.name == "BudgetGuardStrategy":
+            s.enabled = False
+
+    # Force overflow conditions on next send
+    mock_client.messages.count_tokens.return_value.input_tokens = 101
+    before_count = len(session.history)
+
+    await session.send("Third")
+
+    # BudgetGuard was disabled — it must not have dropped any messages
+    # (history grows by 2: new user + assistant)
+    assert len(session.history) == before_count + 2
+
+
+@pytest.mark.asyncio
+async def test_clear_resets_messages_and_stats(session):
+    """Session.clear() must wipe history, counter cache, and all stats."""
+    await session.send("Hello")
+    await session.send("World")
+    assert len(session.history) == 4
+    assert session.token_usage.turns == 2
+
+    session.clear()
+
+    assert len(session.history) == 0
+    assert session.token_usage.turns == 0
+    assert session.token_usage.used == 0
+    assert session.token_usage.cache_hits == 0
+    assert len(session._counter._cache) == 0
+
+
+@pytest.mark.asyncio
+async def test_clear_allows_fresh_send(session):
+    """After clear(), sending a message works normally."""
+    await session.send("Before clear")
+    session.clear()
+    await session.send("After clear")
+    assert len(session.history) == 2  # only the post-clear exchange
+    assert session.history[0].content == "After clear"
+
+
+@pytest.mark.asyncio
 async def test_warning_callback_fires(session, mock_client):
     session.budget = TokenBudget(limit=100, warn_at=0.5, act_at=0.9, reserve=0)
     mock_client.messages.count_tokens.return_value.input_tokens = 60

@@ -186,6 +186,22 @@ class Session:
         self._messages.append(msg)
         return msg
 
+    def clear(self) -> None:
+        """Clear all messages and reset session stats.
+
+        The session configuration (model, system, budget, strategies) is preserved.
+        The API client and its credentials are unchanged.
+        """
+        self._messages.clear()
+        self._counter._cache.clear()
+        self._last_sent_ids = frozenset()
+        self._total_input_tokens = 0
+        self._total_output_tokens = 0
+        self._cache_read_tokens = 0
+        self._cache_write_tokens = 0
+        self._cache_hits = 0
+        self._turns = 0
+
     # ------------------------------------------------------------------
     # Observability
     # ------------------------------------------------------------------

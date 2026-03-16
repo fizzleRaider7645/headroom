@@ -56,6 +56,36 @@ class RelevanceFilterStrategy(BaseStrategy):
         self.use_embeddings = use_embeddings
         self._embedder = None  # lazy-loaded if use_embeddings=True
 
+    @property
+    def params(self) -> list[dict]:
+        return [
+            {
+                "name": "query_window",
+                "label": "Query window",
+                "type": "int",
+                "value": self.query_window,
+                "min": 1,
+                "max": 10,
+            },
+            {
+                "name": "similarity_threshold",
+                "label": "Similarity threshold",
+                "type": "float",
+                "value": self.similarity_threshold,
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.05,
+            },
+            {
+                "name": "min_keep",
+                "label": "Min keep",
+                "type": "int",
+                "value": self.min_keep,
+                "min": 1,
+                "max": 20,
+            },
+        ]
+
     def apply(
         self,
         messages: list["TrackedMessage"],
@@ -70,7 +100,9 @@ class RelevanceFilterStrategy(BaseStrategy):
             return self._apply_embeddings(messages)
         return self._apply_keywords(messages)
 
-    def _apply_keywords(self, messages: list["TrackedMessage"]) -> list["TrackedMessage"]:
+    def _apply_keywords(
+        self, messages: list["TrackedMessage"]
+    ) -> list["TrackedMessage"]:
         # Build query from last N user messages
         user_messages = [m for m in messages if m.role == "user"]
         query_msgs = user_messages[-self.query_window :]
@@ -99,7 +131,11 @@ class RelevanceFilterStrategy(BaseStrategy):
 
         result = []
         for score, msg in scored:
-            if id(msg) in always_keep or score >= self.similarity_threshold or msg.pinned:
+            if (
+                id(msg) in always_keep
+                or score >= self.similarity_threshold
+                or msg.pinned
+            ):
                 result.append(msg)
 
         # Guarantee at least min_keep messages
@@ -108,7 +144,9 @@ class RelevanceFilterStrategy(BaseStrategy):
 
         return result
 
-    def _apply_embeddings(self, messages: list["TrackedMessage"]) -> list["TrackedMessage"]:
+    def _apply_embeddings(
+        self, messages: list["TrackedMessage"]
+    ) -> list["TrackedMessage"]:
         try:
             from sentence_transformers import SentenceTransformer, util  # type: ignore
         except ImportError as e:
@@ -132,7 +170,11 @@ class RelevanceFilterStrategy(BaseStrategy):
         always_keep = set(id(m) for m in messages[-self.min_keep :])
         result = []
         for score, msg in zip(scores, messages):
-            if id(msg) in always_keep or score >= self.similarity_threshold or msg.pinned:
+            if (
+                id(msg) in always_keep
+                or score >= self.similarity_threshold
+                or msg.pinned
+            ):
                 result.append(msg)
 
         if len(result) < self.min_keep:

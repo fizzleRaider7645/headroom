@@ -47,6 +47,35 @@ class SummarizationStrategy(BaseStrategy):
         self.chunk_size = chunk_size
         self.summary_model = summary_model  # if None, uses session model
 
+    @property
+    def params(self) -> list[dict]:
+        return [
+            {
+                "name": "keep_recent",
+                "label": "Keep recent",
+                "type": "int",
+                "value": self.keep_recent,
+                "min": 2,
+                "max": 20,
+            },
+            {
+                "name": "max_summary_tokens",
+                "label": "Max summary tokens",
+                "type": "int",
+                "value": self.max_summary_tokens,
+                "min": 100,
+                "max": 2000,
+            },
+            {
+                "name": "chunk_size",
+                "label": "Chunk size",
+                "type": "int",
+                "value": self.chunk_size,
+                "min": 2,
+                "max": 30,
+            },
+        ]
+
     def apply(
         self,
         messages: list[TrackedMessage],
