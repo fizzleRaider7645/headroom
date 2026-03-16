@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "headroom-dashboard",
+      "runtimeExecutable": ".venv/bin/headroom",
+      "runtimeArgs": ["dashboard", "--reload"],
+      "port": 8000
+    }
+  ]
+}
