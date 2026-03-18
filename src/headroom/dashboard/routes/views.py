@@ -76,7 +76,14 @@ async def index(request: Request):
             for s in sorted(session._strategies, key=lambda x: x.priority)
         ]
     else:
-        status_data = {"error": "No session loaded"}
+        status_data = {
+            "error": "No session loaded",
+            "used": 0, "limit": 0, "headroom": 0,
+            "headroom_pct": 100, "used_pct": 0,
+            "color": "#CCFF00", "status_class": "status-ok",
+            "cache_hits": 0, "turns": 0,
+            "model": "", "session_name": "", "status": "ok",
+        }
         messages = []
         strategies = []
 

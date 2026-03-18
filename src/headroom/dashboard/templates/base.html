@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>headroom{% block title %}{% endblock %}</title>
-    <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+    <script src="/static/vendor/htmx.min.js"></script>
+    <script src="/static/vendor/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/vendor/highlight-github.min.css">
+    <script src="/static/vendor/highlight.min.js"></script>
     <style>
       *,
       *::before,
@@ -269,24 +272,24 @@
       .budget-progress {
         display: block;
         width: 100%;
-        height: 3px;
+        height: 6px;
         border: none;
-        border-radius: 1px;
+        border-radius: 3px;
         overflow: hidden;
-        background: var(--surface2);
+        background: var(--border);
         appearance: none;
         -webkit-appearance: none;
       }
       .budget-progress::-webkit-progress-bar {
-        background: var(--surface2);
-        border-radius: 1px;
+        background: var(--border);
+        border-radius: 3px;
       }
       .budget-progress::-webkit-progress-value {
-        border-radius: 1px;
+        border-radius: 3px;
         transition: width 0.4s ease;
       }
       .budget-progress::-moz-progress-bar {
-        border-radius: 1px;
+        border-radius: 3px;
       }
 
       /* ── Badges ──────────────────────────────────────────────────── */
@@ -371,5 +374,126 @@
       >
     </header>
     {% block body %}{% endblock %}
+    <style>
+      /* ── Markdown rendering ─────────────────────────────────── */
+      .message-body p          { margin: 0 0 0.6em; }
+      .message-body p:last-child { margin-bottom: 0; }
+      .message-body h1, .message-body h2, .message-body h3,
+      .message-body h4, .message-body h5, .message-body h6 {
+        font-weight: 700; margin: 0.8em 0 0.3em; line-height: 1.3;
+      }
+      .message-body h1 { font-size: 1.2em; }
+      .message-body h2 { font-size: 1.1em; }
+      .message-body h3 { font-size: 1em; }
+      .message-body ul, .message-body ol {
+        padding-left: 1.4em; margin: 0.4em 0 0.6em;
+      }
+      .message-body li { margin-bottom: 0.25em; }
+      .message-body code {
+        font-family: var(--mono);
+        font-size: 0.85em;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        padding: 1px 5px;
+      }
+      .message-body pre {
+        position: relative;
+        background: #f6f8fa;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 14px;
+        overflow-x: auto;
+        margin: 0.6em 0;
+      }
+      .message-body pre code {
+        background: none !important;
+        border: none;
+        padding: 0;
+        font-size: 0.82em;
+        font-family: var(--mono);
+      }
+      /* language label */
+      .code-lang {
+        position: absolute;
+        top: 6px; left: 10px;
+        font-size: 10px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+        text-transform: lowercase;
+        letter-spacing: 0.04em;
+        pointer-events: none;
+      }
+      .message-body pre:has(.code-lang) { padding-top: 26px; }
+      /* copy button */
+      .code-copy-btn {
+        position: absolute;
+        top: 6px; right: 8px;
+        font-size: 10px;
+        font-family: var(--mono);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        padding: 2px 8px;
+        cursor: pointer;
+        color: var(--text-muted);
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .message-body pre:hover .code-copy-btn { opacity: 1; }
+      .code-copy-btn.copied {
+        color: #16a34a;
+        border-color: #86efac;
+        background: #f0fdf4;
+      }
+      .message-body blockquote {
+        border-left: 3px solid var(--border);
+        padding-left: 12px;
+        color: var(--text-muted);
+        margin: 0.4em 0;
+      }
+      .message-body strong { font-weight: 700; }
+      .message-body em     { font-style: italic; }
+      .message-body hr {
+        border: none; border-top: 1px solid var(--border); margin: 0.8em 0;
+      }
+      .message-body a { color: var(--text); text-decoration: underline; }
+    </style>
+    <script>
+      marked.use({
+        breaks: true,
+        gfm: true,
+        renderer: {
+          code({ text, lang }) {
+            const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+            const highlighted = hljs.highlight(text, { language }).value;
+            const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
+            return `<pre>${langLabel}<button class="code-copy-btn" onclick="copyCode(this)">copy</button><code class="hljs language-${language}">${highlighted}</code></pre>`;
+          }
+        }
+      });
+
+      function renderMarkdown() {
+        document.querySelectorAll('.message-body[data-raw]').forEach(el => {
+          el.innerHTML = marked.parse(el.dataset.raw);
+          el.removeAttribute('data-raw');
+        });
+      }
+
+      function copyCode(btn) {
+        const code = btn.closest('pre').querySelector('code').innerText;
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = 'copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'copy';
+            btn.classList.remove('copied');
+          }, 1800);
+        });
+      }
+
+      document.addEventListener('DOMContentLoaded', renderMarkdown);
+      document.addEventListener('htmx:afterSettle', renderMarkdown);
+    </script>
   </body>
 </html>

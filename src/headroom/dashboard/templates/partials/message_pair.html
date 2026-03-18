@@ -16,9 +16,8 @@
       >cached</span
     >{% endif %}
   </div>
-  <div class="message-body">
-    {% if msg.content is string %}{{ msg.content }}{% else %}[structured
-    content]{% endif %}
-  </div>
+  <div class="message-body"
+    data-raw="{{ msg.content if msg.content is string else '[structured content]' }}"
+  ></div>
 </div>
 {% endfor %}

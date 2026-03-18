@@ -265,5 +265,10 @@ def dashboard(session_file, host, port, reload, api_key):
 
     click.echo(f"Starting headroom dashboard at http://{host}:{port}")
 
-    app = create_app()
-    uvicorn.run(app, host=host, port=port, reload=reload)
+    if reload:
+        uvicorn.run(
+            "headroom.dashboard.app:create_app",
+            host=host, port=port, reload=True, factory=True,
+        )
+    else:
+        uvicorn.run(create_app(), host=host, port=port)
