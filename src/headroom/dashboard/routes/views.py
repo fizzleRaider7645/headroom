@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -16,10 +15,18 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 def _status_color(used_fraction: float) -> str:
     if used_fraction >= 0.9:
-        return "#ef4444"  # red
+        return "#dc2626"  # red
     if used_fraction >= 0.8:
-        return "#f59e0b"  # amber
-    return "#22c55e"  # green
+        return "#d97706"  # amber
+    return "#CCFF00"  # chartreuse — accent / healthy state
+
+
+def _status_class(used_fraction: float) -> str:
+    if used_fraction >= 0.9:
+        return "status-act"
+    if used_fraction >= 0.8:
+        return "status-warn"
+    return "status-ok"
 
 
 def _api_key_warning() -> str | None:
@@ -51,6 +58,7 @@ async def index(request: Request):
             "headroom_pct": u.headroom_pct,
             "used_pct": round(u.used_fraction * 100),
             "color": _status_color(u.used_fraction),
+            "status_class": _status_class(u.used_fraction),
             "cache_hits": u.cache_hits,
             "turns": u.turns,
             "model": session.model,
@@ -90,26 +98,33 @@ async def budget_bar_partial(request: Request):
     if not state.session:
         return HTMLResponse('<div class="error">No session</div>')
     u = state.session.token_usage
-    color = _status_color(u.used_fraction)
     used_pct = round(u.used_fraction * 100)
-    return templates.TemplateResponse(request, "partials/budget_bar.html", {
-        "request": request,
-        "used": u.used,
-        "limit": u.limit,
-        "headroom": u.headroom,
-        "headroom_pct": u.headroom_pct,
-        "used_pct": used_pct,
-        "color": color,
-        "cache_hits": u.cache_hits,
-        "turns": u.turns,
-    })
+    return templates.TemplateResponse(
+        request,
+        "partials/budget_bar.html",
+        {
+            "request": request,
+            "used": u.used,
+            "limit": u.limit,
+            "headroom": u.headroom,
+            "headroom_pct": u.headroom_pct,
+            "used_pct": used_pct,
+            "status_class": _status_class(u.used_fraction),
+            "cache_hits": u.cache_hits,
+            "turns": u.turns,
+        },
+    )
 
 
 @router.get("/partials/message_list", response_class=HTMLResponse)
 async def message_list_partial(request: Request):
     state = get_state()
     messages = state.session.history if state.session else []
-    return templates.TemplateResponse(request, "partials/message_list.html", {"request": request, "messages": messages})
+    return templates.TemplateResponse(
+        request,
+        "partials/message_list.html",
+        {"request": request, "messages": messages},
+    )
 
 
 def _strategy_dict(name: str) -> dict | None:
@@ -145,11 +160,15 @@ async def toggle_strategy_partial(request: Request, name: str):
 
     strategy = _strategy_dict(name)
     return templates.TemplateResponse(
-        request, "partials/strategy_card.html", {"request": request, "strategy": strategy}
+        request,
+        "partials/strategy_card.html",
+        {"request": request, "strategy": strategy},
     )
 
 
-@router.post("/partials/strategy/{name}/param/{param_name}", response_class=HTMLResponse)
+@router.post(
+    "/partials/strategy/{name}/param/{param_name}", response_class=HTMLResponse
+)
 async def update_strategy_param(
     request: Request, name: str, param_name: str, value: str = Form(...)
 ):
@@ -168,7 +187,9 @@ async def update_strategy_param(
 
     strategy = _strategy_dict(name)
     return templates.TemplateResponse(
-        request, "partials/strategy_card.html", {"request": request, "strategy": strategy}
+        request,
+        "partials/strategy_card.html",
+        {"request": request, "strategy": strategy},
     )
 
 
@@ -197,6 +218,10 @@ async def send_partial(request: Request, message: str = Form(...)):
         history = state.session.history
         # Return the last two messages (user + assistant)
         recent = history[-2:] if len(history) >= 2 else history
-        return templates.TemplateResponse(request, "partials/message_pair.html", {"request": request, "messages": recent})
+        return templates.TemplateResponse(
+            request,
+            "partials/message_pair.html",
+            {"request": request, "messages": recent},
+        )
     except Exception as e:
         return HTMLResponse(f'<div class="error">Error: {e}</div>')

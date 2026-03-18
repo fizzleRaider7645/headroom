@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from headroom.dashboard.routes.api import router as api_router
 from headroom.dashboard.routes.views import router as views_router

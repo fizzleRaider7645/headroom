@@ -4,7 +4,7 @@
       {{ strategy['name'] }}
     </span>
     <button
-      class="{{ 'primary' if strategy['enabled'] else 'secondary' }}"
+      class="{{ 'primary' if strategy['enabled'] else 'danger' }}"
       style="font-size:11px; padding:4px 10px; flex-shrink:0;"
       hx-post="/partials/strategy/{{ strategy['name'] }}/toggle"
       hx-target="closest .strategy-card"
