@@ -13,6 +13,10 @@ class TokenCounter:
         self._model = model
         # (id, content_hash) -> token_count
         self._cache: dict[tuple[int, str], int] = {}
+        # Cache for the last count_exact result to avoid redundant API calls
+        self._last_exact_key: frozenset | None = None
+        self._last_exact_system: str | None = None
+        self._last_exact_total: int = 0
 
     def count_exact(
         self,
@@ -22,7 +26,12 @@ class TokenCounter:
         """
         Exact count via client.messages.count_tokens().
         Called once per send() call. Updates per-message cache.
+        Returns cached result if the message list and system prompt are unchanged.
         """
+        current_key = frozenset((m.id, m.content_hash()) for m in messages)
+        if current_key == self._last_exact_key and system == self._last_exact_system:
+            return self._last_exact_total
+
         api_messages = [m.to_api_dict() for m in messages]
         kwargs: dict = {"model": self._model, "messages": api_messages}
         if system:
@@ -30,6 +39,11 @@ class TokenCounter:
 
         response = self._client.messages.count_tokens(**kwargs)
         total: int = response.input_tokens
+
+        # Cache the result
+        self._last_exact_key = current_key
+        self._last_exact_system = system
+        self._last_exact_total = total
 
         # Update individual message cache with estimated split
         # (exact individual counts aren't available from the API, so we estimate)
@@ -69,6 +83,13 @@ class TokenCounter:
         key = (msg.id, msg.content_hash())
         self._cache[key] = exact_count
         msg.token_count = exact_count
+
+    def clear(self) -> None:
+        """Clear all cached counts and exact-count state."""
+        self._cache.clear()
+        self._last_exact_key = None
+        self._last_exact_system = None
+        self._last_exact_total = 0
 
     def estimate_text(self, text: str) -> int:
         """Estimate tokens for arbitrary text without a TrackedMessage."""

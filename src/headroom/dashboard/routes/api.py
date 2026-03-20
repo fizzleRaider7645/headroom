@@ -80,22 +80,29 @@ async def export_session():
     )
 
 
+@router.get("/strategies")
+async def get_strategies():
+    state = get_state()
+    if state.session is None:
+        return []
+    return [
+        {"name": s.name, "priority": s.priority, "enabled": s.enabled, "params": s.params}
+        for s in sorted(state.session._strategies, key=lambda x: x.priority)
+    ]
+
+
 @router.post("/strategy/{name}/toggle")
 async def toggle_strategy(name: str):
     state = get_state()
     if state.session is None:
         raise HTTPException(status_code=503, detail="No session")
 
-    current = state.strategy_enabled.get(name, True)
-    state.strategy_enabled[name] = not current
-
-    # Enable/disable the strategy instance directly
     for strategy in state.session._strategies:
-        if strategy.name.lower() == name.lower():
-            strategy.enabled = not current
-            break
+        if strategy.name == name:
+            strategy.enabled = not strategy.enabled
+            return {"name": name, "enabled": strategy.enabled}
 
-    return {"name": name, "enabled": not current}
+    raise HTTPException(status_code=404, detail=f"Strategy '{name}' not found")
 
 
 @router.get("/events")

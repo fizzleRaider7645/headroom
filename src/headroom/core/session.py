@@ -11,8 +11,9 @@ import anthropic
 from headroom.core.budget import TokenBudget, TokenUsage
 from headroom.core.message import TrackedMessage
 from headroom.counting.counter import TokenCounter
-from headroom.strategies.base import BaseStrategy, SessionContext
 from headroom.strategies import default_strategies
+from headroom.strategies.base import BaseStrategy, SessionContext
+from headroom.strategies.cache import CacheInjectionStrategy
 
 
 @dataclass
@@ -67,6 +68,10 @@ class Session:
         self._strategies: list[BaseStrategy] = (
             strategies if strategies is not None else default_strategies()
         )
+        if not auto_cache:
+            for s in self._strategies:
+                if isinstance(s, CacheInjectionStrategy):
+                    s.enabled = False
         self._messages: list[TrackedMessage] = []
         self._last_sent_ids: frozenset[int] = frozenset()
 
@@ -172,6 +177,158 @@ class Session:
         """Synchronous wrapper around send()."""
         return asyncio.run(self.send(user_message, **kwargs))
 
+    async def stream(
+        self,
+        user_message: str | list[dict],
+        *,
+        extra_params: dict | None = None,
+    ):
+        """Stream the assistant response as an async generator of text chunks.
+
+        Usage::
+
+            async for chunk in session.stream("Hello!"):
+                print(chunk, end="", flush=True)
+        """
+        user_msg = TrackedMessage(role="user", content=user_message)
+        self._messages.append(user_msg)  # noqa: must happen before try so rollback works
+        try:
+            async for chunk in self._stream_inner(user_msg, extra_params=extra_params):
+                yield chunk
+        except Exception:
+            if user_msg in self._messages:
+                self._messages.remove(user_msg)
+            raise
+
+    async def _stream_inner(
+        self,
+        user_msg: "TrackedMessage",
+        *,
+        extra_params: dict | None = None,
+    ):
+        # 1. Exact token count
+        used = self._counter.count_exact(self._messages, system=self.system)
+        self._update_message_counts()
+
+        # 2. Check budget and fire warning
+        status = self.budget.status(used)
+        if status in ("warn", "act", "overflow") and self.on_warning:
+            self.on_warning(
+                BudgetEvent(
+                    status=status,
+                    used=used,
+                    limit=self.budget.limit,
+                    headroom=self.budget.headroom(used),
+                )
+            )
+
+        # 3. Run strategy pipeline
+        optimized = await self._apply_strategies(self._messages, used)
+
+        # 4. Build API call arguments
+        api_messages = [m.to_api_dict() for m in optimized]
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": api_messages,
+        }
+        if self.system:
+            kwargs["system"] = self.system
+        if extra_params:
+            kwargs.update(extra_params)
+
+        # 5. Stream via thread pool (sync Anthropic client)
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        final_holder: list = []
+        error_holder: list = []
+
+        def _run_stream() -> None:
+            try:
+                with self._client.messages.stream(**kwargs) as s:
+                    for text in s.text_stream:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+                    final_holder.append(s.get_final_message())
+            except Exception as exc:
+                error_holder.append(exc)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        loop.run_in_executor(None, _run_stream)
+
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            yield chunk
+
+        if error_holder:
+            raise error_holder[0]
+
+        # 6. Track usage
+        final = final_holder[0]
+        usage = final.usage
+        self._total_input_tokens += usage.input_tokens
+        self._total_output_tokens += usage.output_tokens
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        self._cache_read_tokens += cache_read
+        self._cache_write_tokens += cache_write
+        if cache_read > 0:
+            self._cache_hits += 1
+        self._turns += 1
+
+        # 7. Append assistant response to history
+        assistant_text = final.content[0].text if final.content else ""
+        assistant_msg = TrackedMessage(
+            role="assistant",
+            content=assistant_text,
+            token_count=usage.output_tokens,
+        )
+        self._messages.append(assistant_msg)
+        self._last_sent_ids = frozenset(m.id for m in optimized)
+
+    def stream_sync(
+        self,
+        user_message: str | list[dict],
+        *,
+        extra_params: dict | None = None,
+    ):
+        """Synchronous generator that streams the assistant response chunk by chunk.
+
+        Usage::
+
+            for chunk in session.stream_sync("Hello!"):
+                print(chunk, end="", flush=True)
+        """
+        import queue as _stdlib_queue
+        import threading
+
+        q: _stdlib_queue.Queue = _stdlib_queue.Queue()
+        exc_holder: list = []
+
+        async def _run() -> None:
+            try:
+                async for chunk in self.stream(user_message, extra_params=extra_params):
+                    q.put(chunk)
+            except Exception as exc:
+                exc_holder.append(exc)
+            finally:
+                q.put(None)
+
+        t = threading.Thread(target=lambda: asyncio.run(_run()), daemon=True)
+        t.start()
+
+        while True:
+            chunk = q.get()
+            if chunk is None:
+                break
+            yield chunk
+
+        t.join()
+        if exc_holder:
+            raise exc_holder[0]
+
     def pin(self, message_id: int) -> None:
         """Mark a message as pinned (immune to trimming)."""
         for msg in self._messages:
@@ -187,14 +344,26 @@ class Session:
         return msg
 
     def clear(self) -> None:
-        """Clear all messages and reset session stats.
+        """Clear conversation history, preserving session-level stats.
 
-        The session configuration (model, system, budget, strategies) is preserved.
-        The API client and its credentials are unchanged.
+        Wipes all messages and the token-count cache so the context window is
+        empty and headroom returns to its maximum.  Cumulative counters
+        (turns, cache hits, total tokens) are intentionally kept so the
+        dashboard stats reflect the full session, not just the current chat.
+
+        The session configuration (model, system, budget, strategies) and the
+        API client are unchanged.
         """
         self._messages.clear()
-        self._counter._cache.clear()
+        self._counter.clear()
         self._last_sent_ids = frozenset()
+
+    def reset_stats(self) -> None:
+        """Reset all cumulative session statistics (turns, token totals, etc).
+
+        Call this when you want a completely fresh start, including zeroing
+        out the stats shown in the dashboard budget bar.
+        """
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._cache_read_tokens = 0
@@ -282,9 +451,7 @@ class Session:
     async def _apply_strategies(
         self, messages: list[TrackedMessage], used_tokens: int
     ) -> list[TrackedMessage]:
-        ctx = SessionContext(
-            client=self._client, model=self.model, system=self.system
-        )
+        ctx = SessionContext(client=self._client, model=self.model, system=self.system)
         result = list(messages)
 
         for strategy in sorted(self._strategies, key=lambda s: s.priority):

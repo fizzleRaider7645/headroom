@@ -13,9 +13,6 @@ class DashboardState:
     session_name: str = "untitled"
     event_log: list[dict] = field(default_factory=list)
 
-    # Per-strategy enabled flags (name -> bool)
-    strategy_enabled: dict[str, bool] = field(default_factory=dict)
-
     def log_event(self, event_type: str, **kwargs) -> None:
         from datetime import datetime, timezone
         self.event_log.append(

@@ -460,35 +460,49 @@
       .message-body a { color: var(--text); text-decoration: underline; }
     </style>
     <script>
-      marked.use({
-        breaks: true,
-        gfm: true,
-        renderer: {
-          code({ text, lang }) {
-            const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
-            const highlighted = hljs.highlight(text, { language }).value;
-            const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
-            return `<pre>${langLabel}<button class="code-copy-btn" onclick="copyCode(this)">copy</button><code class="hljs language-${language}">${highlighted}</code></pre>`;
-          }
-        }
-      });
-
-      function renderMarkdown() {
-        document.querySelectorAll('.message-body[data-raw]').forEach(el => {
-          el.innerHTML = marked.parse(el.dataset.raw);
-          el.removeAttribute('data-raw');
-        });
-      }
+      marked.use({ breaks: true, gfm: true });
 
       function copyCode(btn) {
         const code = btn.closest('pre').querySelector('code').innerText;
         navigator.clipboard.writeText(code).then(() => {
           btn.textContent = 'copied!';
           btn.classList.add('copied');
-          setTimeout(() => {
-            btn.textContent = 'copy';
-            btn.classList.remove('copied');
-          }, 1800);
+          setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+        });
+      }
+
+      function renderMarkdown() {
+        document.querySelectorAll('.message-body[data-raw]').forEach(el => {
+          try {
+            el.innerHTML = marked.parse(el.dataset.raw);
+            el.removeAttribute('data-raw');
+
+            // Syntax-highlight every code block and attach copy button
+            el.querySelectorAll('pre code').forEach(block => {
+              try { hljs.highlightElement(block); } catch(e) {}
+
+              const pre = block.closest('pre');
+              if (!pre || pre.querySelector('.code-copy-btn')) return;
+
+              const lang = (block.className.match(/language-(\w+)/) || [])[1] || '';
+              if (lang && lang !== 'plaintext') {
+                const label = document.createElement('span');
+                label.className = 'code-lang';
+                label.textContent = lang;
+                pre.insertBefore(label, pre.firstChild);
+              }
+
+              const btn = document.createElement('button');
+              btn.className = 'code-copy-btn';
+              btn.textContent = 'copy';
+              btn.onclick = () => copyCode(btn);
+              pre.appendChild(btn);
+            });
+          } catch(e) {
+            // Fallback: show raw text if marked fails
+            el.textContent = el.dataset.raw;
+            el.removeAttribute('data-raw');
+          }
         });
       }
 

@@ -23,7 +23,6 @@ def setup_state(mock_client):
     yield
     state.session = None
     state.event_log.clear()
-    state.strategy_enabled.clear()
 
 
 @pytest.fixture
@@ -94,6 +93,23 @@ def test_strategy_toggle_htmx_partial(client):
     assert "OFF" in response.text or "disabled" in response.text.lower() or "false" in response.text.lower()
 
 
+def test_get_api_strategies(client):
+    """GET /api/strategies returns list of strategy dicts."""
+    response = client.get("/api/strategies")
+    assert response.status_code == 200
+    strategies = response.json()
+    assert isinstance(strategies, list)
+    assert len(strategies) > 0
+    names = {s["name"] for s in strategies}
+    assert "BudgetGuardStrategy" in names
+    assert "CacheInjectionStrategy" in names
+    for s in strategies:
+        assert "name" in s
+        assert "priority" in s
+        assert "enabled" in s
+        assert "params" in s
+
+
 def test_clear_chat_wipes_session(client):
     """POST /partials/clear must clear session history and return empty HTML."""
     state = get_state()
@@ -108,3 +124,12 @@ def test_clear_chat_wipes_session(client):
     assert response.text == ""           # empty HTML → message list goes blank
     assert len(state.session.history) == 0
     assert state.session.token_usage.turns == 0
+
+
+def test_send_partial_returns_only_assistant_message(client):
+    response = client.post("/partials/send", data={"message": "duplicate me"})
+
+    assert response.status_code == 200
+    assert "message-assistant" in response.text
+    assert "message-user" not in response.text
+    assert "duplicate me" not in response.text

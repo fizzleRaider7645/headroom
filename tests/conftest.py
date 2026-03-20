@@ -30,6 +30,17 @@ def mock_client():
     msg_response.usage = usage
     client.messages.create.return_value = msg_response
 
+    # Default messages.stream response (context manager)
+    stream_ctx = MagicMock()
+    stream_ctx.__enter__ = MagicMock(return_value=stream_ctx)
+    stream_ctx.__exit__ = MagicMock(return_value=False)
+    stream_ctx.text_stream = ["Hello", "! I'm", " the assistant."]
+    stream_final = MagicMock()
+    stream_final.content = [content_block]
+    stream_final.usage = usage
+    stream_ctx.get_final_message = MagicMock(return_value=stream_final)
+    client.messages.stream.return_value = stream_ctx
+
     return client
 
 

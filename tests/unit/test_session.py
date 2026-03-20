@@ -108,7 +108,7 @@ async def test_disabled_strategy_is_skipped(session, mock_client):
 
 @pytest.mark.asyncio
 async def test_clear_resets_messages_and_stats(session):
-    """Session.clear() must wipe history, counter cache, and all stats."""
+    """Session.clear() wipes history and counter cache but preserves cumulative stats."""
     await session.send("Hello")
     await session.send("World")
     assert len(session.history) == 4
@@ -116,11 +116,18 @@ async def test_clear_resets_messages_and_stats(session):
 
     session.clear()
 
+    # Messages and token-count cache are gone
     assert len(session.history) == 0
-    assert session.token_usage.turns == 0
     assert session.token_usage.used == 0
-    assert session.token_usage.cache_hits == 0
     assert len(session._counter._cache) == 0
+
+    # Cumulative stats are preserved — only reset_stats() clears them
+    assert session.token_usage.turns == 2
+
+    # reset_stats() zeros everything
+    session.reset_stats()
+    assert session.token_usage.turns == 0
+    assert session.token_usage.cache_hits == 0
 
 
 @pytest.mark.asyncio
@@ -131,6 +138,73 @@ async def test_clear_allows_fresh_send(session):
     await session.send("After clear")
     assert len(session.history) == 2  # only the post-clear exchange
     assert session.history[0].content == "After clear"
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_chunks_and_appends_history(session, mock_client):
+    """stream() yields text chunks and appends user+assistant to history."""
+    chunks = []
+    async for chunk in session.stream("Hello"):
+        chunks.append(chunk)
+
+    assert chunks == ["Hello", "! I'm", " the assistant."]
+    assert len(session.history) == 2
+    assert session.history[0].role == "user"
+    assert session.history[1].role == "assistant"
+    assert session.token_usage.turns == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_rollback_on_error(session, mock_client):
+    """stream() rolls back user message when the stream errors."""
+    mock_client.messages.stream.side_effect = RuntimeError("network error")
+
+    with pytest.raises(RuntimeError, match="network error"):
+        async for _ in session.stream("Hello"):
+            pass
+
+    assert len(session.history) == 0
+
+
+def test_stream_sync_yields_chunks(session, mock_client):
+    """stream_sync() is a sync generator that yields chunks in order."""
+    chunks = list(session.stream_sync("Hello"))
+    assert chunks == ["Hello", "! I'm", " the assistant."]
+    assert len(session.history) == 2
+
+
+def test_auto_cache_false_disables_cache_strategy(mock_client):
+    """Session(auto_cache=False) disables CacheInjectionStrategy."""
+    from unittest.mock import patch
+    from headroom.strategies.cache import CacheInjectionStrategy
+
+    with patch("headroom.core.session.anthropic.Anthropic", return_value=mock_client):
+        s = Session(model="claude-opus-4-6", auto_cache=False)
+    cache_strats = [st for st in s._strategies if isinstance(st, CacheInjectionStrategy)]
+    assert len(cache_strats) == 1
+    assert cache_strats[0].enabled is False
+
+
+def test_auto_cache_true_keeps_cache_strategy_enabled(mock_client):
+    """Session(auto_cache=True) keeps CacheInjectionStrategy enabled (default)."""
+    from unittest.mock import patch
+    from headroom.strategies.cache import CacheInjectionStrategy
+
+    with patch("headroom.core.session.anthropic.Anthropic", return_value=mock_client):
+        s = Session(model="claude-opus-4-6", auto_cache=True)
+    cache_strats = [st for st in s._strategies if isinstance(st, CacheInjectionStrategy)]
+    assert cache_strats[0].enabled is True
+
+
+@pytest.mark.asyncio
+async def test_count_exact_cached_on_same_messages(session, mock_client):
+    """count_exact() skips the API call when messages haven't changed."""
+    counter = session._counter
+    counter.count_exact(session._messages, system=None)
+    counter.count_exact(session._messages, system=None)
+
+    # Only one API call despite two count_exact calls with identical state
+    assert mock_client.messages.count_tokens.call_count == 1
 
 
 @pytest.mark.asyncio

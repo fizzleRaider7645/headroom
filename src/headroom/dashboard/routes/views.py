@@ -70,7 +70,7 @@ async def index(request: Request):
             {
                 "name": s.name,
                 "priority": s.priority,
-                "enabled": state.strategy_enabled.get(s.name, True),
+                "enabled": s.enabled,
                 "params": s.params,
             }
             for s in sorted(session._strategies, key=lambda x: x.priority)
@@ -157,12 +157,9 @@ async def toggle_strategy_partial(request: Request, name: str):
     if not state.session:
         return HTMLResponse('<div class="strategy-card error">No session</div>')
 
-    current = state.strategy_enabled.get(name, True)
-    state.strategy_enabled[name] = not current
-
     for s in state.session._strategies:
         if s.name == name:
-            s.enabled = not current
+            s.enabled = not s.enabled
             break
 
     strategy = _strategy_dict(name)
@@ -218,17 +215,21 @@ async def send_partial(request: Request, message: str = Form(...)):
         return HTMLResponse('<div class="error">No session loaded</div>')
 
     try:
-        response = await state.session.send(message)
-        assistant_text = response.content[0].text if response.content else ""
+        await state.session.send(message)
         state.log_event("message", headroom=state.session.token_usage.headroom)
 
         history = state.session.history
-        # Return the last two messages (user + assistant)
-        recent = history[-2:] if len(history) >= 2 else history
+        assistant_message = next(
+            (msg for msg in reversed(history) if msg.role == "assistant"),
+            None,
+        )
         return templates.TemplateResponse(
             request,
             "partials/message_pair.html",
-            {"request": request, "messages": recent},
+            {
+                "request": request,
+                "messages": [assistant_message] if assistant_message else [],
+            },
         )
     except Exception as e:
         return HTMLResponse(f'<div class="error">Error: {e}</div>')
