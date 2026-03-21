@@ -27,6 +27,7 @@ class TokenBudget:
     warn_at: float = 0.80
     act_at: float = 0.90
     reserve: int = 1_024
+    cost_limit: float | None = None  # optional dollar budget (USD)
 
     @property
     def usable(self) -> int:
@@ -76,6 +77,8 @@ class TokenUsage:
     cache_write_tokens: int = 0
     cache_hits: int = 0
     turns: int = 0
+    total_cost: float = 0.0        # cumulative USD cost for the session
+    cost_limit: float | None = None  # optional dollar budget
 
     @property
     def headroom(self) -> int:
@@ -91,3 +94,10 @@ class TokenUsage:
     @property
     def headroom_pct(self) -> int:
         return round((1.0 - self.used_fraction) * 100)
+
+    @property
+    def cost_remaining(self) -> float | None:
+        """Remaining dollar budget, or None if no cost_limit is set."""
+        if self.cost_limit is None:
+            return None
+        return max(0.0, self.cost_limit - self.total_cost)

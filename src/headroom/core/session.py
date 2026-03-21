@@ -9,6 +9,7 @@ from typing import Callable
 import anthropic
 
 from headroom.core.budget import TokenBudget, TokenUsage
+from headroom.core.pricing import calculate_turn_cost
 from headroom.core.message import TrackedMessage
 from headroom.counting.counter import TokenCounter
 from headroom.strategies import default_strategies
@@ -82,6 +83,7 @@ class Session:
         self._cache_write_tokens = 0
         self._cache_hits = 0
         self._turns = 0
+        self._total_cost: float = 0.0
 
     # ------------------------------------------------------------------
     # Public API
@@ -156,6 +158,13 @@ class Session:
         if cache_read > 0:
             self._cache_hits += 1
         self._turns += 1
+        self._total_cost += calculate_turn_cost(
+            self.model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_write_tokens=cache_write,
+            cache_read_tokens=cache_read,
+        )
 
         # 7. Append assistant response to history
         assistant_text = response.content[0].text if response.content else ""
@@ -277,6 +286,13 @@ class Session:
         if cache_read > 0:
             self._cache_hits += 1
         self._turns += 1
+        self._total_cost += calculate_turn_cost(
+            self.model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_write_tokens=cache_write,
+            cache_read_tokens=cache_read,
+        )
 
         # 7. Append assistant response to history
         assistant_text = final.content[0].text if final.content else ""
@@ -370,6 +386,7 @@ class Session:
         self._cache_write_tokens = 0
         self._cache_hits = 0
         self._turns = 0
+        self._total_cost = 0.0
 
     # ------------------------------------------------------------------
     # Observability
@@ -386,6 +403,8 @@ class Session:
             cache_write_tokens=self._cache_write_tokens,
             cache_hits=self._cache_hits,
             turns=self._turns,
+            total_cost=self._total_cost,
+            cost_limit=self.budget.cost_limit,
         )
 
     @property
@@ -409,6 +428,7 @@ class Session:
                 "warn_at": self.budget.warn_at,
                 "act_at": self.budget.act_at,
                 "reserve": self.budget.reserve,
+                "cost_limit": self.budget.cost_limit,
             },
             "messages": [m.to_json() for m in self._messages],
             "stats": {
@@ -418,6 +438,7 @@ class Session:
                 "cache_write_tokens": self._cache_write_tokens,
                 "cache_hits": self._cache_hits,
                 "turns": self._turns,
+                "total_cost": self._total_cost,
             },
         }
         Path(path).write_text(json.dumps(data, indent=2))
@@ -442,6 +463,7 @@ class Session:
         session._cache_write_tokens = stats.get("cache_write_tokens", 0)
         session._cache_hits = stats.get("cache_hits", 0)
         session._turns = stats.get("turns", 0)
+        session._total_cost = stats.get("total_cost", 0.0)
         return session
 
     # ------------------------------------------------------------------
