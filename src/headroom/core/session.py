@@ -23,6 +23,9 @@ class BudgetEvent:
     used: int
     limit: int
     headroom: int
+    total_cost: float = 0.0
+    cost_limit: float | None = None
+    cost_remaining: float | None = None
 
 
 @dataclass
@@ -84,6 +87,7 @@ class Session:
         self._cache_hits = 0
         self._turns = 0
         self._total_cost: float = 0.0
+        self._last_turn_cost: float = 0.0
 
     # ------------------------------------------------------------------
     # Public API
@@ -117,7 +121,7 @@ class Session:
         used = self._counter.count_exact(self._messages, system=self.system)
         self._update_message_counts()
 
-        # 2. Check budget and fire warning
+        # 2. Check token budget and fire warning
         status = self.budget.status(used)
         if status in ("warn", "act", "overflow") and self.on_warning:
             self.on_warning(
@@ -126,6 +130,9 @@ class Session:
                     used=used,
                     limit=self.budget.limit,
                     headroom=self.budget.headroom(used),
+                    total_cost=self._total_cost,
+                    cost_limit=self.budget.cost_limit,
+                    cost_remaining=self._cost_remaining(),
                 )
             )
 
@@ -158,13 +165,15 @@ class Session:
         if cache_read > 0:
             self._cache_hits += 1
         self._turns += 1
-        self._total_cost += calculate_turn_cost(
+        self._last_turn_cost = calculate_turn_cost(
             self.model,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             cache_write_tokens=cache_write,
             cache_read_tokens=cache_read,
         )
+        self._total_cost += self._last_turn_cost
+        self._fire_cost_warning(used)
 
         # 7. Append assistant response to history
         assistant_text = response.content[0].text if response.content else ""
@@ -219,7 +228,7 @@ class Session:
         used = self._counter.count_exact(self._messages, system=self.system)
         self._update_message_counts()
 
-        # 2. Check budget and fire warning
+        # 2. Check token budget and fire warning
         status = self.budget.status(used)
         if status in ("warn", "act", "overflow") and self.on_warning:
             self.on_warning(
@@ -228,6 +237,9 @@ class Session:
                     used=used,
                     limit=self.budget.limit,
                     headroom=self.budget.headroom(used),
+                    total_cost=self._total_cost,
+                    cost_limit=self.budget.cost_limit,
+                    cost_remaining=self._cost_remaining(),
                 )
             )
 
@@ -286,13 +298,15 @@ class Session:
         if cache_read > 0:
             self._cache_hits += 1
         self._turns += 1
-        self._total_cost += calculate_turn_cost(
+        self._last_turn_cost = calculate_turn_cost(
             self.model,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             cache_write_tokens=cache_write,
             cache_read_tokens=cache_read,
         )
+        self._total_cost += self._last_turn_cost
+        self._fire_cost_warning(used)
 
         # 7. Append assistant response to history
         assistant_text = final.content[0].text if final.content else ""
@@ -387,6 +401,7 @@ class Session:
         self._cache_hits = 0
         self._turns = 0
         self._total_cost = 0.0
+        self._last_turn_cost = 0.0
 
     # ------------------------------------------------------------------
     # Observability
@@ -404,6 +419,7 @@ class Session:
             cache_hits=self._cache_hits,
             turns=self._turns,
             total_cost=self._total_cost,
+            last_turn_cost=self._last_turn_cost,
             cost_limit=self.budget.cost_limit,
         )
 
@@ -506,3 +522,31 @@ class Session:
         for msg in self._messages:
             if msg.token_count == 0:
                 msg.token_count = self._counter._estimate_one(msg)
+
+    def _cost_remaining(self) -> float | None:
+        if self.budget.cost_limit is None:
+            return None
+        return max(0.0, self.budget.cost_limit - self._total_cost)
+
+    def _fire_cost_warning(self, used: int) -> None:
+        """Fire on_warning for cost thresholds after a turn completes."""
+        if not self.on_warning or self.budget.cost_limit is None:
+            return
+        fraction = self._total_cost / self.budget.cost_limit
+        if fraction >= 1.0:
+            cost_status = "cost_limit"
+        elif fraction >= self.budget.warn_at:
+            cost_status = "cost_warn"
+        else:
+            return
+        self.on_warning(
+            BudgetEvent(
+                status=cost_status,
+                used=used,
+                limit=self.budget.limit,
+                headroom=self.budget.headroom(used),
+                total_cost=self._total_cost,
+                cost_limit=self.budget.cost_limit,
+                cost_remaining=self._cost_remaining(),
+            )
+        )

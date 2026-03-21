@@ -5,14 +5,11 @@
     </span>
     <span class="budget-bar-label"> tokens of headroom </span>
     <span class="budget-bar-meta">
-      {{ "{:,}".format(used) }} / {{ "{:,}".format(limit) }} used &nbsp;<span
-        class="budget-bar-separator"
-        >|</span
-      >&nbsp; {{ headroom_pct }}% free &nbsp;<span class="budget-bar-separator"
-        >|</span
+      {{ "{:,}".format(used) }} / {{ "{:,}".format(limit) }} used &nbsp;<span class="budget-bar-separator">|</span
+      >&nbsp; {{ headroom_pct }}% free &nbsp;<span class="budget-bar-separator">|</span
       >&nbsp; {{ turns }} turns &nbsp;<span class="budget-bar-separator">|</span
       >&nbsp; {{ cache_hits }} cache hits &nbsp;<span class="budget-bar-separator">|</span
-      >&nbsp; ${{ "%.4f"|format(total_cost) }}{% if cost_limit %} / ${{ "%.2f"|format(cost_limit) }} budget{% endif %}{% if cost_remaining is not none %} &nbsp;<span class="budget-bar-separator">|</span>&nbsp; ${{ "%.4f"|format(cost_remaining) }} remaining{% endif %}
+      >&nbsp; ${{ "%.4f"|format(total_cost) }} total{% if last_turn_cost %} (${{ "%.4f"|format(last_turn_cost) }} last turn){% endif %}{% if cost_limit %} &nbsp;<span class="budget-bar-separator">|</span>&nbsp; ${{ "%.2f"|format(cost_remaining) }} / ${{ "%.2f"|format(cost_limit) }} budget remaining{% endif %}
     </span>
   </div>
   <progress
