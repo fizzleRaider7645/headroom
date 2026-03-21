@@ -48,17 +48,19 @@ async def post_message(message: str = Form(...)):
         response = await state.session.send(message)
         assistant_text = response.content[0].text if response.content else ""
         state.log_event("message_sent", headroom=state.session.token_usage.headroom)
-        return {"assistant": assistant_text, "usage": {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        }}
+        return {
+            "assistant": assistant_text,
+            "usage": {
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            },
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/session/export")
 async def export_session():
-    import json
     import tempfile
     from pathlib import Path
 
@@ -76,7 +78,9 @@ async def export_session():
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{state.session_name}.json"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{state.session_name}.json"'
+        },
     )
 
 
@@ -86,7 +90,12 @@ async def get_strategies():
     if state.session is None:
         return []
     return [
-        {"name": s.name, "priority": s.priority, "enabled": s.enabled, "params": s.params}
+        {
+            "name": s.name,
+            "priority": s.priority,
+            "enabled": s.enabled,
+            "params": s.params,
+        }
         for s in sorted(state.session._strategies, key=lambda x: x.priority)
     ]
 

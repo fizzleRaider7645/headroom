@@ -192,6 +192,12 @@
         background: var(--surface);
         border-radius: var(--radius);
         border: 1px solid var(--border);
+        position: relative;
+      }
+      .strategy-card--disabled .strategy-card__body {
+        opacity: 0.4;
+        pointer-events: none;
+        user-select: none;
       }
 
       /* ── Message cards ───────────────────────────────────────────── */
