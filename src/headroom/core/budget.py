@@ -78,6 +78,7 @@ class TokenUsage:
     cache_hits: int = 0
     turns: int = 0
     total_cost: float = 0.0        # cumulative USD cost for the session
+    last_turn_cost: float = 0.0    # cost of the most recent turn
     cost_limit: float | None = None  # optional dollar budget
 
     @property

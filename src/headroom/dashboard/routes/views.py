@@ -65,6 +65,7 @@ async def index(request: Request):
             "session_name": state.session_name,
             "status": session.budget.status(u.used),
             "total_cost": u.total_cost,
+            "last_turn_cost": u.last_turn_cost,
             "cost_limit": u.cost_limit,
             "cost_remaining": u.cost_remaining,
         }
@@ -86,7 +87,7 @@ async def index(request: Request):
             "color": "#CCFF00", "status_class": "status-ok",
             "cache_hits": 0, "turns": 0,
             "model": "", "session_name": "", "status": "ok",
-            "total_cost": 0.0, "cost_limit": None, "cost_remaining": None,
+            "total_cost": 0.0, "last_turn_cost": 0.0, "cost_limit": None, "cost_remaining": None,
         }
         messages = []
         strategies = []
@@ -124,6 +125,7 @@ async def budget_bar_partial(request: Request):
             "cache_hits": u.cache_hits,
             "turns": u.turns,
             "total_cost": u.total_cost,
+            "last_turn_cost": u.last_turn_cost,
             "cost_limit": u.cost_limit,
             "cost_remaining": u.cost_remaining,
         },
